@@ -3,12 +3,16 @@ const labels: Record<string, string> = {
   BIDDING: "Bidding",
   ASSIGNED: "Assigned",
   IN_PROGRESS: "In progress",
+  PENDING_CONFIRMATION: "Awaiting confirmation",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
   PENDING: "Pending",
   ACCEPTED: "Accepted",
   REJECTED: "Rejected",
   WITHDRAWN: "Withdrawn",
+  SUCCEEDED: "Paid",
+  FAILED: "Failed",
+  REFUNDED: "Refunded",
 };
 
 export function StatusBadge({ status }: { status: string }) {

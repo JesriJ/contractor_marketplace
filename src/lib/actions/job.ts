@@ -4,8 +4,11 @@ import { redirect } from "next/navigation";
 import {
   acceptBid,
   cancelJob,
+  confirmJobCompletion,
   createJob,
   rejectBid,
+  requestJobCompletion,
+  startJob,
   submitBid,
   updateJob,
 } from "@/lib/jobs";
@@ -64,6 +67,33 @@ export async function rejectBidAction(_previous: FormState, formData: FormData):
 export async function cancelJobAction(_previous: FormState, formData: FormData): Promise<FormState> {
   const jobId = String(formData.get("jobId") ?? "");
   const result = await cancelJob(jobId);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+  redirect(`/jobs/${jobId}`);
+}
+
+export async function startJobAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  const jobId = String(formData.get("jobId") ?? "");
+  const result = await startJob(jobId);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+  redirect(`/jobs/${jobId}`);
+}
+
+export async function requestCompletionAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  const jobId = String(formData.get("jobId") ?? "");
+  const result = await requestJobCompletion(jobId);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+  redirect(`/jobs/${jobId}`);
+}
+
+export async function confirmCompletionAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  const jobId = String(formData.get("jobId") ?? "");
+  const result = await confirmJobCompletion(jobId);
   if (!result.ok) {
     return { error: result.error };
   }

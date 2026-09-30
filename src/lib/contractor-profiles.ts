@@ -1,5 +1,6 @@
 import { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ratingSummaries } from "@/lib/reviews";
 import { getSession } from "@/lib/session";
 import {
   contractorProfileSchema,
@@ -39,6 +40,8 @@ export type PublicContractor = {
   profileImage: string | null;
   verified: boolean;
   createdAt: string;
+  ratingAverage: number | null;
+  reviewCount: number;
 };
 
 export type ProfileMutationResult =
@@ -65,6 +68,8 @@ function toPublicContractor(profile: ProfileRecord): PublicContractor {
     profileImage: profile.profileImage,
     verified: profile.verified,
     createdAt: profile.createdAt.toISOString(),
+    ratingAverage: null,
+    reviewCount: 0,
   };
 }
 
@@ -100,27 +105,42 @@ export function contractorSearchWhere(search: ContractorSearch): Prisma.Contract
 }
 
 export async function searchContractors(search: ContractorSearch) {
-  const page = Number.isInteger(search.page) && search.page && search.page > 0 ? search.page : 1;
   const where = contractorSearchWhere(search);
+  const total = await prisma.contractorProfile.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / CONTRACTOR_PAGE_SIZE));
+  const page = Math.min(
+    Number.isInteger(search.page) && search.page && search.page > 0 ? search.page : 1,
+    pageCount,
+  );
+  const profiles = await prisma.contractorProfile.findMany({
+    where,
+    select: publicProfileSelect,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * CONTRACTOR_PAGE_SIZE,
+    take: CONTRACTOR_PAGE_SIZE,
+  });
 
-  const [total, profiles] = await prisma.$transaction([
-    prisma.contractorProfile.count({ where }),
-    prisma.contractorProfile.findMany({
-      where,
-      select: publicProfileSelect,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * CONTRACTOR_PAGE_SIZE,
-      take: CONTRACTOR_PAGE_SIZE,
-    }),
-  ]);
+  const contractors = await attachRatings(profiles.map(toPublicContractor));
 
   return {
-    contractors: profiles.map(toPublicContractor),
+    contractors,
     total,
     page,
     pageSize: CONTRACTOR_PAGE_SIZE,
     pageCount: Math.max(1, Math.ceil(total / CONTRACTOR_PAGE_SIZE)),
   };
+}
+
+async function attachRatings<T extends { id: string }>(contractors: T[]) {
+  const summaries = await ratingSummaries(contractors.map((contractor) => contractor.id));
+  return contractors.map((contractor) => {
+    const summary = summaries.get(contractor.id);
+    return {
+      ...contractor,
+      ratingAverage: summary?.ratingAverage ?? null,
+      reviewCount: summary?.reviewCount ?? 0,
+    };
+  });
 }
 
 export async function getPublicContractor(id: string) {
@@ -129,7 +149,12 @@ export async function getPublicContractor(id: string) {
     select: publicProfileSelect,
   });
 
-  return profile ? toPublicContractor(profile) : null;
+  if (!profile) {
+    return null;
+  }
+
+  const [withRating] = await attachRatings([toPublicContractor(profile)]);
+  return withRating;
 }
 
 export async function getContractorProfileForUser(userId: string) {

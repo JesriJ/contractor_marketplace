@@ -2,67 +2,66 @@
 
 ## Current phase
 
-Phase 4 — Direct hiring
+Phase 8 — Polish, testing, and deployment preparation
+
+Deployment to a live URL has not been verified.
 
 ## Completed
 
-### Phase 0
+### Phases 0–7
 
-- Next.js App Router, TypeScript, Tailwind CSS, Prisma, and PostgreSQL
-- Shared layout, navigation, and homepage
+- Accounts, contractor profiles, job bidding, direct hiring, messaging, completion, reviews, and Stripe test checkout
+- Payment status changes only after a verified Stripe webhook
+- Job completion requires the contractor to mark the work finished and the customer to confirm it
 
-### Phase 1
+### Phase 8
 
-- Customer and contractor accounts
-- Registration, bcrypt hashing, NextAuth login and logout
-- Protected routes
+- Health check no longer returns raw database error text
+- Contractor, job, message, and review lists stay on a valid page instead of requesting an unbounded offset
+- Reviews on a contractor profile are paginated
+- Shared focus outline, skip link, loading text, and a generic error page
+- Login and registration pages are marked not to be indexed
+- Message refresh shows an error when polling fails
+- README covers local setup, tests, production PostgreSQL, and Vercel
+- `npm run build` generates the Prisma client before the Next.js build
+- `npm run db:deploy` runs `prisma migrate deploy`
 
-### Phase 2
+## Local verification
 
-- Contractor profiles, public directory, and search
-- Verification stays platform-controlled
-
-### Phase 3
-
-- Customers post jobs, contractors bid, and accepting a bid assigns that contractor
-- Duplicate bids and bids after assignment are rejected
-- Related bid and job updates run in a transaction
-
-### Phase 4
-
-- Customers request service from a contractor profile
-- `HireRequest` statuses: `PENDING`, `ACCEPTED`, `REJECTED`, `CANCELLED`
-- Migration `20260930015813_add_hire_requests`
-- Only the addressed contractor can accept or reject
-- Only the customer who sent the request can view it as the customer or cancel it while it is pending
-- Accepting a pending request creates one `ASSIGNED` job in the same transaction
-- A second accept does not create another job
-- Rejecting or cancelling does not create a job
-- Customer and contractor dashboards list service requests
-- Direct-hire jobs have no budget until a later payment phase
-
-## How to verify Phase 4
+These checks passed locally. They do not verify a live Vercel deployment.
 
 ```bash
-npx prisma migrate deploy
-npm run dev
+npx tsc --noEmit
+npm run lint
+npm run build
+node scripts/test-auth.mjs
+node scripts/test-profiles.mjs
+node scripts/test-jobs.mjs
 node scripts/test-hire-requests.mjs
+node scripts/test-messages.mjs
+node scripts/test-payments.mjs
 ```
 
-The script checks validation, the wrong contractor, the wrong customer, acceptance, a repeated accept, rejection, cancellation, and cleanup of the temporary accounts.
+## Deployment checklist
 
-In the browser:
+Use this before calling the project deployed. None of these production steps have been completed from this repository.
 
-1. Log in as a customer and request service from a contractor profile.
-2. Log in as that contractor and accept the request from the dashboard or `/hire-requests`.
-3. Confirm one assigned job appears for both accounts.
-4. Confirm another contractor cannot accept it.
+1. Create a Git remote and push `main`.
+2. Create Amazon RDS for PostgreSQL, or another hosted PostgreSQL instance.
+3. Set `DATABASE_URL` with `sslmode=require`.
+4. Run `npx prisma migrate deploy` against that database.
+5. Create a Vercel project from the repository.
+6. Set production environment variables:
+   - `DATABASE_URL`
+   - `NEXTAUTH_SECRET`
+   - `NEXTAUTH_URL` as the production `https` origin
+   - `STRIPE_SECRET_KEY` as an `sk_test_` key until live payments are intentional
+   - `STRIPE_WEBHOOK_SECRET` from a Stripe Dashboard webhook endpoint
+7. Confirm the Vercel build runs `prisma generate && next build`.
+8. Add the Stripe endpoint `https://YOUR_DOMAIN/api/stripe/webhook` for `checkout.session.completed`, `checkout.session.async_payment_failed`, `checkout.session.expired`, and `payment_intent.payment_failed`.
+9. On the live site, register, post or accept a job, send a message, and pay with test card `4242 4242 4242 4242`.
+10. Confirm the payment record becomes `SUCCEEDED` only after the webhook, not after the browser returns from Checkout.
 
 ## Not started
 
-- Phase 5: messaging
-- Reviews, Stripe, and marking jobs in progress or completed
-
-## Next phase
-
-Phase 5 — Messaging between customers and contractors on an assigned job.
+- A verified production deployment

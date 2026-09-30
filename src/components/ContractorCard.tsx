@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { PublicContractor } from "@/lib/contractor-profiles";
-import { formatHourlyRate, formatLocation } from "@/lib/format";
+import { formatHourlyRate, formatLocation, formatRating } from "@/lib/format";
 
 export function ContractorCard({ contractor }: { contractor: PublicContractor }) {
   return (
@@ -9,6 +9,11 @@ export function ContractorCard({ contractor }: { contractor: PublicContractor })
       <p className="mt-1 text-sm text-slate-600">{contractor.trade}</p>
       <p className="mt-3 text-sm text-slate-700">{formatLocation(contractor.city, contractor.state)}</p>
       <p className="mt-2 text-sm text-slate-700">{formatHourlyRate(contractor.hourlyRate)}</p>
+      <p className="mt-1 text-sm text-slate-700">
+        {contractor.reviewCount > 0 && contractor.ratingAverage != null
+          ? `${formatRating(contractor.ratingAverage)} / 5 · ${contractor.reviewCount} ${contractor.reviewCount === 1 ? "review" : "reviews"}`
+          : "No reviews yet"}
+      </p>
       <p className="mt-1 text-sm text-slate-600">
         {contractor.yearsExperience} {contractor.yearsExperience === 1 ? "year" : "years"} experience
       </p>

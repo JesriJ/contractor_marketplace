@@ -12,6 +12,11 @@ export function formatHourlyRate(value: { toString(): string } | string | number
   return `${formatMoney(value)}/hr`;
 }
 
+export function formatRating(average: number) {
+  const rounded = Math.round(average * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 export function formatPostedDate(value: string | Date) {
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",

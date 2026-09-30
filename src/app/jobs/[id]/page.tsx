@@ -6,9 +6,12 @@ import { BidForm } from "@/components/BidForm";
 import { DecisionForm } from "@/components/DecisionForm";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
-import { acceptBidAction, cancelJobAction, rejectBidAction, submitBidAction } from "@/lib/actions/job";
+import { acceptBidAction, cancelJobAction, confirmCompletionAction, rejectBidAction, requestCompletionAction, startJobAction, submitBidAction } from "@/lib/actions/job";
+import { PayButton } from "@/components/PayButton";
+import { ReviewForm } from "@/components/ReviewForm";
 import { formatLocation, formatMoney, formatPostedDate } from "@/lib/format";
 import { getJobDetail } from "@/lib/jobs";
+import { getJobPayment } from "@/lib/payments";
 import { getSession } from "@/lib/session";
 
 type JobPageProps = {
@@ -36,6 +39,15 @@ export default async function JobPage({ params }: JobPageProps) {
 
   const session = await getSession();
   const { job } = detail;
+  const payment =
+    detail.isOwner || detail.isAssignedContractor ? await getJobPayment(job.id).catch(() => null) : null;
+  const canPay =
+    detail.isOwner &&
+    job.contractor &&
+    job.status !== JobStatus.CANCELLED &&
+    job.status !== JobStatus.OPEN &&
+    job.status !== JobStatus.BIDDING &&
+    payment?.status !== "SUCCEEDED";
   const canManage = detail.isOwner && (job.status === JobStatus.OPEN || job.status === JobStatus.BIDDING);
 
   return (
@@ -67,6 +79,36 @@ export default async function JobPage({ params }: JobPageProps) {
           </Link>
         </p>
       ) : null}
+      {detail.canMessage ? (
+        <p className="mt-3 text-sm">
+          <Link href={`/jobs/${job.id}/messages`} className="font-medium text-blue-700 hover:text-blue-800">
+            Message
+          </Link>
+        </p>
+      ) : null}
+
+      {(detail.isOwner || detail.isAssignedContractor) && (
+        <div className="mt-6 rounded-md border border-slate-200 bg-white p-4">
+          <h2 className="text-base font-semibold text-slate-900">Payment</h2>
+          {payment ? (
+            <p className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+              {formatMoney(payment.amount)} <StatusBadge status={payment.status} />
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-slate-600">No payment has been recorded.</p>
+          )}
+          {payment?.status === "PENDING" ? (
+            <p className="mt-2 text-sm text-slate-600">
+              Checkout can stay pending until Stripe sends a verified webhook.
+            </p>
+          ) : null}
+          {canPay ? (
+            <div className="mt-3">
+              <PayButton jobId={job.id} />
+            </div>
+          ) : null}
+        </div>
+      )}
 
       <h2 className="mt-8 text-lg font-semibold text-slate-900">Description</h2>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{job.description}</p>
@@ -77,6 +119,49 @@ export default async function JobPage({ params }: JobPageProps) {
             Edit job
           </Link>
           <DecisionForm action={cancelJobAction} jobId={job.id} label="Cancel job" pendingLabel="Cancelling..." />
+        </div>
+      ) : null}
+
+      {detail.isAssignedContractor && job.status === JobStatus.ASSIGNED ? (
+        <div className="mt-6">
+          <DecisionForm action={startJobAction} jobId={job.id} label="Start job" pendingLabel="Starting..." />
+        </div>
+      ) : null}
+      {detail.isAssignedContractor && job.status === JobStatus.IN_PROGRESS ? (
+        <div className="mt-6">
+          <DecisionForm
+            action={requestCompletionAction}
+            jobId={job.id}
+            label="Mark complete"
+            pendingLabel="Submitting..."
+          />
+        </div>
+      ) : null}
+      {detail.isOwner && job.status === JobStatus.PENDING_CONFIRMATION ? (
+        <div className="mt-6 space-y-2">
+          <p className="text-sm text-slate-700">The contractor marked this job complete. Confirm when the work is finished.</p>
+          <DecisionForm
+            action={confirmCompletionAction}
+            jobId={job.id}
+            label="Confirm completion"
+            pendingLabel="Confirming..."
+          />
+        </div>
+      ) : null}
+
+      {detail.canReview ? (
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold text-slate-900">Leave a review</h2>
+          <div className="mt-4 rounded-md border border-slate-200 bg-white p-6">
+            <ReviewForm jobId={job.id} />
+          </div>
+        </div>
+      ) : null}
+      {detail.isOwner && detail.review ? (
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold text-slate-900">Your review</h2>
+          <p className="mt-2 text-sm text-slate-800">{detail.review.rating} / 5</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{detail.review.comment}</p>
         </div>
       ) : null}
 

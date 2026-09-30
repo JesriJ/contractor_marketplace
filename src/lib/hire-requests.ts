@@ -1,4 +1,5 @@
 import { HireRequestStatus, JobStatus, Prisma, UserRole } from "@prisma/client";
+import { createJobConversation } from "@/lib/messages";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { hireRequestSchema, hireRequestValidationMessage } from "@/lib/validations/hire-request";
@@ -220,6 +221,12 @@ export async function acceptHireRequest(id: string): Promise<HireRequestResult<H
       await tx.hireRequest.update({
         where: { id },
         data: { jobId: job.id },
+      });
+
+      await createJobConversation(tx, {
+        jobId: job.id,
+        customerId: existing.customerId,
+        contractorId: existing.contractorId,
       });
     });
 

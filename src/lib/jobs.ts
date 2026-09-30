@@ -1,6 +1,7 @@
 import { BidStatus, JobStatus, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { createJobConversation } from "@/lib/messages";
 import { bidSchema, jobSchema, validationMessage } from "@/lib/validations/job";
 
 export const JOB_PAGE_SIZE = 12;
@@ -52,6 +53,10 @@ export type JobDetail = {
   needsProfile: boolean;
   customerEmail: string | null;
   myBid: BidView | null;
+  canMessage: boolean;
+  isAssignedContractor: boolean;
+  canReview: boolean;
+  review: { rating: number; comment: string } | null;
   bids: BidView[];
 };
 
@@ -178,7 +183,6 @@ function resultFromError(error: unknown): MutationResult<never> {
 }
 
 export async function searchJobs(search: { keyword?: string; location?: string; page?: number }) {
-  const page = Number.isInteger(search.page) && search.page && search.page > 0 ? search.page : 1;
   const keyword = cleanQuery(search.keyword);
   const location = cleanQuery(search.location);
   const filters: Prisma.JobWhereInput[] = [{ status: { in: openStatuses } }];
@@ -198,22 +202,25 @@ export async function searchJobs(search: { keyword?: string; location?: string; 
   }
 
   const where = { AND: filters };
-  const [total, jobs] = await prisma.$transaction([
-    prisma.job.count({ where }),
-    prisma.job.findMany({
-      where,
-      include: jobInclude,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * JOB_PAGE_SIZE,
-      take: JOB_PAGE_SIZE,
-    }),
-  ]);
+  const total = await prisma.job.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / JOB_PAGE_SIZE));
+  const page = Math.min(
+    Number.isInteger(search.page) && search.page && search.page > 0 ? search.page : 1,
+    pageCount,
+  );
+  const jobs = await prisma.job.findMany({
+    where,
+    include: jobInclude,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * JOB_PAGE_SIZE,
+    take: JOB_PAGE_SIZE,
+  });
 
   return {
     jobs: jobs.map(toPublicJob),
     total,
     page,
-    pageCount: Math.max(1, Math.ceil(total / JOB_PAGE_SIZE)),
+    pageCount,
   };
 }
 
@@ -230,6 +237,11 @@ export async function getJobDetail(jobId: string): Promise<JobDetail | null> {
     : undefined;
   const hiredContractor = viewer?.profileId !== null && job.contractorId === viewer?.profileId;
 
+  const review = await prisma.review.findUnique({
+    where: { jobId: job.id },
+    select: { rating: true, comment: true },
+  });
+
   return {
     job: toPublicJob(job),
     isOwner,
@@ -243,6 +255,16 @@ export async function getJobDetail(jobId: string): Promise<JobDetail | null> {
     customerEmail: isOwner || hiredContractor ? job.customer.email : null,
     myBid: myBidRecord ? toBid(myBidRecord) : null,
     bids: isOwner ? job.bids.map(toBid) : [],
+    canMessage:
+      Boolean(job.contractorId) &&
+      (job.status === JobStatus.ASSIGNED ||
+        job.status === JobStatus.IN_PROGRESS ||
+        job.status === JobStatus.PENDING_CONFIRMATION ||
+        job.status === JobStatus.COMPLETED) &&
+      (isOwner || viewer?.profileId === job.contractorId),
+    isAssignedContractor: viewer?.profileId != null && viewer.profileId === job.contractorId,
+    canReview: isOwner && job.status === JobStatus.COMPLETED && Boolean(job.contractorId) && !review,
+    review,
   };
 }
 
@@ -517,6 +539,12 @@ export async function acceptBid(jobId: string, bidId: string): Promise<MutationR
         where: { jobId: job.id, id: { not: bid.id }, status: BidStatus.PENDING },
         data: { status: BidStatus.REJECTED },
       });
+
+      await createJobConversation(tx, {
+        jobId: job.id,
+        customerId: job.customerId,
+        contractorId: bid.contractorId,
+      });
     });
   } catch (error) {
     return resultFromError(error);
@@ -577,4 +605,86 @@ export async function rejectBid(jobId: string, bidId: string): Promise<MutationR
 
   const job = await prisma.job.findUniqueOrThrow({ where: { id: jobId }, include: jobInclude });
   return { ok: true, data: toPublicJob(job) };
+}
+
+async function reloadJob(jobId: string) {
+  const job = await prisma.job.findUniqueOrThrow({ where: { id: jobId }, include: jobInclude });
+  return toPublicJob(job);
+}
+
+async function changeAssignedJobStatus(jobId: string, from: JobStatus, to: JobStatus, failure: string) {
+  const access = await requireRoleUser(UserRole.CONTRACTOR);
+  if (!access.ok) {
+    return access;
+  }
+
+  const profile = await prisma.contractorProfile.findUnique({
+    where: { userId: access.userId },
+    select: { id: true },
+  });
+  if (!profile) {
+    return { ok: false as const, status: 400, error: "Contractor profile not found." };
+  }
+
+  const existing = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { contractorId: true },
+  });
+  if (!existing) {
+    return { ok: false as const, status: 404, error: "Job not found." };
+  }
+  if (existing.contractorId !== profile.id) {
+    return { ok: false as const, status: 403, error: "Unauthorized." };
+  }
+
+  const updated = await prisma.job.updateMany({
+    where: { id: jobId, contractorId: profile.id, status: from },
+    data: { status: to },
+  });
+  if (updated.count !== 1) {
+    return { ok: false as const, status: 400, error: failure };
+  }
+
+  return { ok: true as const, data: await reloadJob(jobId) };
+}
+
+export async function startJob(jobId: string): Promise<MutationResult<PublicJob>> {
+  return changeAssignedJobStatus(jobId, JobStatus.ASSIGNED, JobStatus.IN_PROGRESS, "This job cannot be started.");
+}
+
+export async function requestJobCompletion(jobId: string): Promise<MutationResult<PublicJob>> {
+  return changeAssignedJobStatus(
+    jobId,
+    JobStatus.IN_PROGRESS,
+    JobStatus.PENDING_CONFIRMATION,
+    "This job cannot be marked complete.",
+  );
+}
+
+export async function confirmJobCompletion(jobId: string): Promise<MutationResult<PublicJob>> {
+  const access = await requireRoleUser(UserRole.CUSTOMER);
+  if (!access.ok) {
+    return access;
+  }
+
+  const existing = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { customerId: true },
+  });
+  if (!existing) {
+    return { ok: false, status: 404, error: "Job not found." };
+  }
+  if (existing.customerId !== access.userId) {
+    return { ok: false, status: 403, error: "Unauthorized." };
+  }
+
+  const updated = await prisma.job.updateMany({
+    where: { id: jobId, customerId: access.userId, status: JobStatus.PENDING_CONFIRMATION },
+    data: { status: JobStatus.COMPLETED },
+  });
+  if (updated.count !== 1) {
+    return { ok: false, status: 400, error: "This job is not ready to confirm." };
+  }
+
+  return { ok: true, data: await reloadJob(jobId) };
 }

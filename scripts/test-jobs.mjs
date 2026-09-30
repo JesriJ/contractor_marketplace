@@ -138,7 +138,7 @@ async function main() {
   const contractorC = await login(emails.contractorC);
 
   const profileA = await createProfile(contractorA, "Phase Three Plumbing");
-  const profileB = await createProfile(contractorB, "Phase Three Electrical");
+  await createProfile(contractorB, "Phase Three Electrical");
   await createProfile(contractorC, "Phase Three Paint");
 
   const anonymousJob = await request("/api/jobs", { method: "POST", body: jobInput });

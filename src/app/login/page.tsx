@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/LoginForm";
 import { getSession } from "@/lib/session";
+
+export const metadata: Metadata = {
+  title: "Log in | Contractor Marketplace",
+  robots: { index: false, follow: false },
+};
 
 export default async function LoginPage() {
   const session = await getSession();

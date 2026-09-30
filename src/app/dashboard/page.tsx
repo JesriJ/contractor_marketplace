@@ -5,6 +5,7 @@ import { UserRole } from "@prisma/client";
 import { EmptyState } from "@/components/EmptyState";
 import { HireRequestList } from "@/components/HireRequestList";
 import { JobCard } from "@/components/JobCard";
+import { RecentMessages } from "@/components/RecentMessages";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getContractorProfileForUser } from "@/lib/contractor-profiles";
 import { formatHourlyRate, formatLocation, formatMoney } from "@/lib/format";
@@ -64,17 +65,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         </div>
 
-        <h2 className="mt-8 text-lg font-semibold text-slate-900">Assigned jobs</h2>
-        {work.activeJobs.length === 0 ? (
+        <h2 className="mt-8 text-lg font-semibold text-slate-900">Active jobs</h2>
+        {work.activeJobs.filter((job) => job.status === "ASSIGNED" || job.status === "IN_PROGRESS" || job.status === "PENDING_CONFIRMATION").length === 0 ? (
           <div className="mt-3">
             <EmptyState
-              title="No assigned jobs."
+              title="No active jobs."
               description="A job appears here after a customer accepts your bid or you accept a service request."
             />
           </div>
         ) : (
           <ul className="mt-3 space-y-4">
-            {work.activeJobs.map((job) => (
+            {work.activeJobs
+              .filter((job) => job.status === "ASSIGNED" || job.status === "IN_PROGRESS" || job.status === "PENDING_CONFIRMATION")
+              .map((job) => (
               <li key={job.id}>
                 <JobCard job={job} />
               </li>
@@ -105,6 +108,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </ul>
         )}
 
+        <h2 className="mt-8 text-lg font-semibold text-slate-900">Messages</h2>
+        <div className="mt-3">
+          <RecentMessages />
+        </div>
+
         <h2 className="mt-8 text-lg font-semibold text-slate-900">Service requests</h2>
         {!requests.ok ? (
           <div className="mt-3">
@@ -125,7 +133,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const jobs = await listJobsForCustomer(session.user.id);
   const requests = await listHireRequestsForCurrentUser();
-  const activeJobs = jobs.filter((job) => job.status === "ASSIGNED");
 
   return (
     <section className="mx-auto max-w-3xl px-4 py-12">
@@ -144,14 +151,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </Link>
       </p>
 
-      <h2 className="mt-8 text-lg font-semibold text-slate-900">Assigned jobs</h2>
-      {activeJobs.length === 0 ? (
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Active jobs</h2>
+      {jobs.filter((job) => job.status === "ASSIGNED" || job.status === "IN_PROGRESS" || job.status === "PENDING_CONFIRMATION").length === 0 ? (
         <div className="mt-3">
-          <EmptyState title="No assigned jobs." description="A job appears here after you accept a bid or a contractor accepts your service request." />
+          <EmptyState title="No active jobs." description="A job appears here after you accept a bid or a contractor accepts your service request." />
         </div>
       ) : (
         <ul className="mt-3 space-y-4">
-          {activeJobs.map((job) => (
+          {jobs
+            .filter((job) => job.status === "ASSIGNED" || job.status === "IN_PROGRESS" || job.status === "PENDING_CONFIRMATION")
+            .map((job) => (
             <li key={job.id}>
               <JobCard job={job} />
             </li>
@@ -192,11 +201,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <HireRequestList requests={requests.data.requests} role={requests.data.role} />
       ) : null}
 
-      <div className="mt-6">
-        <EmptyState
-          title="No conversations yet."
-          description="Messages with contractors will appear here after messaging is available."
-        />
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Messages</h2>
+      <div className="mt-3">
+        <RecentMessages />
       </div>
     </section>
   );
