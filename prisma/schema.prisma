@@ -1,0 +1,131 @@
+// Prisma is the only database access layer in this project.
+// Messaging, reviews, and payments are later phases.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  CONTRACTOR
+}
+
+enum JobStatus {
+  OPEN
+  BIDDING
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum HireRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id                 String             @id @default(cuid())
+  email              String             @unique
+  password           String
+  role               UserRole
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  contractorProfile  ContractorProfile?
+  jobs               Job[]
+  hireRequests       HireRequest[]
+}
+
+model ContractorProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName     String
+  trade           String
+  bio             String
+  hourlyRate      Decimal  @db.Decimal(8, 2)
+  yearsExperience Int
+  city            String
+  state           String
+  profileImage    String?
+  verified        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  assignedJobs    Job[]
+  bids            Bid[]
+  hireRequests    HireRequest[]
+
+  @@index([trade])
+  @@index([city])
+  @@index([state])
+}
+
+model Job {
+  id           String              @id @default(cuid())
+  title        String
+  description  String
+  budget       Decimal?            @db.Decimal(10, 2)
+  location     String
+  status       JobStatus           @default(OPEN)
+  customerId   String
+  customer     User                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contractorId String?
+  contractor   ContractorProfile?  @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  bids         Bid[]
+  hireRequest  HireRequest?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+  @@index([contractorId])
+}
+
+model Bid {
+  id                String             @id @default(cuid())
+  jobId             String
+  job               Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  contractorId      String
+  contractor        ContractorProfile  @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  amount            Decimal            @db.Decimal(10, 2)
+  message           String
+  estimatedDuration String
+  status            BidStatus          @default(PENDING)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([jobId, contractorId])
+  @@index([contractorId])
+}
+
+model HireRequest {
+  id           String             @id @default(cuid())
+  customerId   String
+  customer     User               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contractorId String
+  contractor   ContractorProfile  @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  message      String
+  status       HireRequestStatus  @default(PENDING)
+  jobId        String?            @unique
+  job          Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([customerId])
+  @@index([contractorId])
+  @@index([status])
+}
