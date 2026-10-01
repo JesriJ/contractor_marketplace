@@ -2,7 +2,7 @@
 
 ## Application structure
 
-The project is a single Next.js application. Pages, server-rendered views, route handlers, and server actions share one TypeScript codebase.
+Contractor Marketplace is a Next.js application. Pages, server-rendered views, route handlers, and server actions share one TypeScript codebase.
 
 ```text
 src/app/                 Routes, pages, layouts, and API handlers
@@ -71,6 +71,6 @@ Stripe sends payment results to the webhook endpoint. The handler:
 
 This keeps browser input and redirect URLs outside the payment trust boundary.
 
-## Deployment
+## Production
 
-The application is deployed as a Next.js project on Vercel with a hosted PostgreSQL database. Secrets are supplied through deployment environment variables and are not committed. Production schema changes use committed Prisma migrations through `prisma migrate deploy`.
+The live application runs on Vercel with PostgreSQL and Stripe. Account credentials and Stripe secrets stay in the deployment environment.
