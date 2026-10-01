@@ -23,7 +23,10 @@
 # misc
 .DS_Store
 *.pem
-docs/
+
+# Internal planning documents
+/docs/*
+!/docs/ARCHITECTURE.md
 
 # debug
 npm-debug.log*
@@ -34,7 +37,7 @@ yarn-error.log*
 # env files
 .env
 .env*.local
-.env.example
+!.env.example
 
 # vercel
 .vercel
